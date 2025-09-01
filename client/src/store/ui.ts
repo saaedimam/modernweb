@@ -31,6 +31,9 @@ interface UIState {
   setSearchQuery: (query: string) => void;
 }
 
+// Store timeout IDs to prevent memory leaks
+const toastTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
@@ -71,14 +74,30 @@ export const useUIStore = create<UIState>()(
         };
         set((state) => ({ toasts: [...state.toasts, newToast] }));
 
-        // Auto remove toast
-        setTimeout(() => {
+        // Auto remove toast with timeout management
+        const timeoutId = setTimeout(() => {
           get().removeToast(id);
+          toastTimeouts.delete(id);
         }, newToast.duration);
+        
+        toastTimeouts.set(id, timeoutId);
       },
-      removeToast: (id) =>
-        set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
-      clearToasts: () => set({ toasts: [] }),
+      removeToast: (id) => {
+        // Clear timeout if it exists
+        const timeoutId = toastTimeouts.get(id);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          toastTimeouts.delete(id);
+        }
+        
+        set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+      },
+      clearToasts: () => {
+        // Clear all timeouts
+        toastTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        toastTimeouts.clear();
+        set({ toasts: [] });
+      },
 
       // Loading states
       isLoading: false,

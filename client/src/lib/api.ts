@@ -12,13 +12,15 @@ class ApiError extends Error {
 // Create abort controller for request timeout
 function createAbortController(timeoutMs: number = API_TIMEOUT) {
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), timeoutMs);
-  return controller;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  // Return both controller and timeout ID for cleanup
+  return { controller, timeoutId };
 }
 
 // Generic API request function
 async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const controller = createAbortController();
+  const { controller, timeoutId } = createAbortController();
   
   try {
     const response = await fetch(url, {
@@ -30,12 +32,18 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
       },
     });
 
+    // Clear timeout since request completed successfully
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
       throw new ApiError(`HTTP error! status: ${response.status}`, response.status);
     }
 
     return await response.json();
   } catch (error) {
+    // Clear timeout on error as well
+    clearTimeout(timeoutId);
+    
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new ApiError('Request timeout');
     }
